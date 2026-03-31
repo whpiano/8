@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,8 +25,11 @@ import {
   X,
   Lightbulb,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Crown,
+  Lock
 } from 'lucide-react';
+import PaymentModal from '@/components/PaymentModal';
 
 interface WrongQuestion {
   id: number;
@@ -47,7 +51,18 @@ interface WrongQuestion {
   } | null;
 }
 
+interface QuotaInfo {
+  isLoggedIn: boolean;
+  canAnswer: boolean;
+  isVip: boolean;
+  reason: string;
+}
+
 export default function WrongQuestionsPage() {
+  const router = useRouter();
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const [showPayment, setShowPayment] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [wrongQuestions, setWrongQuestions] = useState<WrongQuestion[]>([]);
   const [masteredQuestions, setMasteredQuestions] = useState<WrongQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -60,6 +75,28 @@ export default function WrongQuestionsPage() {
   const [practiceMode, setPracticeMode] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState('');
 
+  // 检查权限
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/user/quota', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setQuota(data.data);
+          // 错题本功能需要VIP
+          if (!data.data.isVip) {
+            setCheckingAuth(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('获取权限失败:', error);
+      }
+      setCheckingAuth(false);
+    };
+    checkAuth();
+  }, []);
+
   const currentList = activeTab === 'pending' ? wrongQuestions : masteredQuestions;
   const filteredList = subjectFilter 
     ? currentList.filter(wq => wq.questions?.subject === subjectFilter)
@@ -67,11 +104,13 @@ export default function WrongQuestionsPage() {
   const currentWrong = filteredList[currentIndex];
 
   const fetchData = useCallback(async () => {
+    if (!quota?.isVip) return;
+    
     setLoading(true);
     try {
       const [pendingRes, masteredRes] = await Promise.all([
-        fetch('/api/wrong-questions?mastered=false&page_size=1000'),
-        fetch('/api/wrong-questions?mastered=true&page_size=1000')
+        fetch('/api/wrong-questions?mastered=false&page_size=1000', { credentials: 'include' }),
+        fetch('/api/wrong-questions?mastered=true&page_size=1000', { credentials: 'include' })
       ]);
       
       const pendingData = await pendingRes.json();
@@ -84,11 +123,13 @@ export default function WrongQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [quota?.isVip]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (quota?.isVip) {
+      fetchData();
+    }
+  }, [fetchData, quota?.isVip]);
 
   const resetAnswer = () => {
     setSelectedAnswer('');
@@ -202,6 +243,76 @@ export default function WrongQuestionsPage() {
     return types[type] || type;
   };
 
+  // 加载中
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </Link>
+            <h1 className="text-xl font-bold">错题本</h1>
+          </div>
+        </header>
+        <main className="max-w-4xl mx-auto px-4 py-12 flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </main>
+      </div>
+    );
+  }
+
+  // 非VIP用户
+  if (!quota?.isVip) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <h1 className="text-xl font-bold">错题本</h1>
+            </div>
+          </div>
+        </header>
+        <main className="max-w-4xl mx-auto px-4 py-12">
+          <Card className="max-w-md mx-auto text-center">
+            <CardContent className="pt-8 pb-6">
+              <div className="w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Crown className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold mb-2">VIP 专属功能</h2>
+              <p className="text-gray-500 mb-6">
+                错题本功能仅限 VIP 会员使用<br/>
+                开通 VIP 即可无限次使用
+              </p>
+              <Button 
+                className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600"
+                onClick={() => setShowPayment(true)}
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                开通 VIP
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <PaymentModal 
+          open={showPayment} 
+          onOpenChange={setShowPayment}
+          onSuccess={() => {
+            // 刷新权限
+            window.location.reload();
+          }}
+        />
+      </div>
+    );
+  }
+
   // 列表模式
   if (!practiceMode) {
     return (
@@ -216,6 +327,11 @@ export default function WrongQuestionsPage() {
               </Link>
               <h1 className="text-xl font-bold">错题本</h1>
             </div>
+            {quota?.isVip && (
+              <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white">
+                <Crown className="w-3 h-3 mr-1" /> VIP
+              </Badge>
+            )}
           </div>
         </header>
 

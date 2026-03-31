@@ -43,16 +43,54 @@ interface QuotaInfo {
   vipExpiredAt: string | null;
 }
 
+interface SystemConfig {
+  free_quota: number;
+  vip_price_day: number;
+  vip_price_month: number;
+  vip_price_year: number;
+  friend_links: Array<{ name: string; url: string }>;
+  question_notice: string;
+}
+
 export default function Home() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
 
   useEffect(() => {
     fetchStats();
+    fetchConfig();
   }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      const data = await res.json();
+      if (data.success) {
+        // 解析JSON字符串
+        let friendLinks: Array<{ name: string; url: string }> = [];
+        try {
+          friendLinks = JSON.parse(data.data.friend_links || '[]');
+        } catch {
+          friendLinks = [];
+        }
+        
+        setSystemConfig({
+          free_quota: parseInt(data.data.free_count) || 10,
+          vip_price_day: parseInt(data.data.vip_price) || 10,
+          vip_price_month: parseInt(data.data.vip_price) || 100,
+          vip_price_year: parseInt(data.data.vip_price) || 365,
+          friend_links: friendLinks,
+          question_notice: data.data.questions_page_notice || ''
+        });
+      }
+    } catch (error) {
+      console.error('获取配置失败:', error);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -316,6 +354,24 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-12 py-6 text-center text-gray-500 text-sm">
         <p>初中地生会考练习系统 · 助力会考成功</p>
+        
+        {/* 友情链接 */}
+        {systemConfig?.friend_links && systemConfig.friend_links.length > 0 && (
+          <div className="mt-4 flex items-center justify-center gap-4 flex-wrap">
+            <span className="text-gray-400">友情链接：</span>
+            {systemConfig.friend_links.map((link, index) => (
+              <a
+                key={index}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                {link.name}
+              </a>
+            ))}
+          </div>
+        )}
       </footer>
 
       {/* Payment Modal */}

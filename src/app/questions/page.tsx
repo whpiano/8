@@ -77,10 +77,24 @@ export default function QuestionsPage() {
   const [exporting, setExporting] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [customNotice, setCustomNotice] = useState('题库管理功能仅限管理员使用。如需导入题目，请联系管理员。');
 
   useEffect(() => {
     checkAdminStatus();
+    fetchConfig();
   }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      const data = await res.json();
+      if (data.success && data.data.questions_page_notice) {
+        setCustomNotice(data.data.questions_page_notice);
+      }
+    } catch (error) {
+      console.error('获取配置失败:', error);
+    }
+  };
 
   useEffect(() => {
     if (isAdmin) {
@@ -358,7 +372,7 @@ export default function QuestionsPage() {
     );
   }
 
-  // 非管理员状态 - 只显示登录界面
+  // 非管理员状态 - 显示自定义内容
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -381,19 +395,18 @@ export default function QuestionsPage() {
         </header>
 
         <main className="max-w-6xl mx-auto px-4 py-12">
-          <Card className="max-w-md mx-auto">
+          <Card className="max-w-lg mx-auto">
             <CardHeader className="text-center">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Lock className="w-8 h-8 text-blue-600" />
               </div>
-              <CardTitle>需要管理员权限</CardTitle>
-              <CardDescription>
-                题库管理功能仅限管理员使用，请点击右上角「管理员登录」按钮
-              </CardDescription>
+              <CardTitle>题库管理</CardTitle>
             </CardHeader>
-            <CardContent className="text-center text-sm text-gray-500">
-              <p>默认管理员密码：<code className="bg-gray-100 px-2 py-1 rounded">admin123</code></p>
-              <p className="mt-2">可在环境变量 ADMIN_PASSWORD 中修改</p>
+            <CardContent className="text-center">
+              <p className="text-gray-600 whitespace-pre-wrap">{customNotice}</p>
+              <div className="mt-6 pt-4 border-t text-sm text-gray-400">
+                <p>管理员请点击右上角「管理员登录」</p>
+              </div>
             </CardContent>
           </Card>
         </main>

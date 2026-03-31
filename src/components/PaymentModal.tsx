@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,14 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Crown, 
-  Check, 
-  Loader2,
-  CreditCard,
-  AlertCircle
-} from 'lucide-react';
+import { Crown, Check, Loader2, CreditCard, AlertCircle, Zap } from 'lucide-react';
 
 interface PaymentModalProps {
   open: boolean;
@@ -26,19 +19,49 @@ interface PaymentModalProps {
   onSuccess: () => void;
 }
 
+interface SystemConfig {
+  vip_price: string;
+  vip_duration_hours: string;
+}
+
 export default function PaymentModal({ open, onOpenChange, onSuccess }: PaymentModalProps) {
-  const [step, setStep] = useState<'select' | 'paying' | 'verify'>('select');
+  const [step, setStep] = useState<'pay' | 'verify'>('pay');
   const [paymentCode, setPaymentCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [config, setConfig] = useState<SystemConfig>({
+    vip_price: '10',
+    vip_duration_hours: '24'
+  });
 
-  // VIP 价格
-  const VIP_PRICE = 10.00;
-  const VIP_DURATION = '24 小时';
+  // 获取系统配置
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        const data = await res.json();
+        if (data.success) {
+          setConfig({
+            vip_price: data.data.vip_price || '10',
+            vip_duration_hours: data.data.vip_duration_hours || '24'
+          });
+        }
+      } catch (error) {
+        console.error('获取配置失败:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
 
-  // 打开支付弹窗
+  const vipPrice = parseFloat(config.vip_price) || 10;
+  const vipHours = parseInt(config.vip_duration_hours) || 24;
+
+  // 打开支付
   const handlePay = () => {
+    setLoading(true);
+    
     // 检查 ZhuPay 是否已加载
     if (typeof window !== 'undefined') {
       const win = window as unknown as { 
@@ -47,32 +70,37 @@ export default function PaymentModal({ open, onOpenChange, onSuccess }: PaymentM
         } 
       };
       if (win.ZhuPay) {
-        win.ZhuPay.open(VIP_PRICE, '开通VIP', (code: string) => {
-          // 支付成功，拿到凭证码
+        win.ZhuPay.open(vipPrice, `开通VIP${vipHours}小时`, (code: string) => {
+          setLoading(false);
           setPaymentCode(code);
           setStep('verify');
         });
         return;
       }
     }
-    // 如果 ZhuPay 未加载，提示用户手动输入
-    setStep('paying');
+    
+    // 如果 ZhuPay 未加载，模拟跳转
+    setTimeout(() => {
+      setLoading(false);
+      setStep('verify');
+    }, 1000);
   };
 
   // 验证支付凭证
   const handleVerify = async () => {
-    if (!paymentCode) {
-      setError('请输入支付凭证码');
+    if (!paymentCode || paymentCode.length < 6) {
+      setError('请输入正确的凭证码');
       return;
     }
 
-    setLoading(true);
+    setVerifying(true);
     setError('');
 
     try {
       const res = await fetch('/api/payment/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ code: paymentCode })
       });
 
@@ -86,21 +114,23 @@ export default function PaymentModal({ open, onOpenChange, onSuccess }: PaymentM
           resetState();
         }, 2000);
       } else {
-        setError(data.error);
+        setError(data.error || '验证失败');
       }
     } catch (err) {
       setError('验证失败，请重试');
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   };
 
   // 重置状态
   const resetState = () => {
-    setStep('select');
+    setStep('pay');
     setPaymentCode('');
     setError('');
     setSuccess(false);
+    setLoading(false);
+    setVerifying(false);
   };
 
   // 关闭时重置
@@ -113,133 +143,106 @@ export default function PaymentModal({ open, onOpenChange, onSuccess }: PaymentM
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Crown className="w-5 h-5 text-yellow-500" />
-            开通 VIP 会员
-          </DialogTitle>
-          <DialogDescription>
-            支付 10 元，当日无限次刷题
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Crown className="w-8 h-8 text-white" />
+          </div>
+          <DialogTitle className="text-xl">开通 VIP 会员</DialogTitle>
+          <DialogDescription className="text-base">
+            支付 <span className="text-orange-500 font-bold text-lg">¥{vipPrice}</span>，
+            {vipHours}小时无限刷题
           </DialogDescription>
         </DialogHeader>
 
-        {/* 选择支付方式 */}
-        {step === 'select' && (
-          <div className="space-y-4">
-            {/* VIP 权益说明 */}
-            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg p-4">
-              <h4 className="font-medium mb-2">VIP 权益</h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-green-500" />
-                  当日无限次刷题
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-green-500" />
-                  支持顺序练习、模拟考试
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-green-500" />
-                  答题记录云端同步
-                </li>
-              </ul>
+        {success ? (
+          <div className="text-center py-6">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Check className="w-7 h-7 text-green-500" />
             </div>
-
-            {/* 价格信息 */}
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="text-2xl font-bold text-orange-500">¥10</p>
-                <p className="text-sm text-gray-500">有效期 {VIP_DURATION}</p>
+            <p className="text-lg font-medium text-green-600">VIP 开通成功！</p>
+            <p className="text-sm text-gray-500 mt-1">正在刷新页面...</p>
+          </div>
+        ) : step === 'pay' ? (
+          <div className="space-y-4 pt-2">
+            {/* VIP 权益 */}
+            <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <Check className="w-4 h-4 text-green-500" />
+                <span>无限次顺序练习</span>
               </div>
-              <Badge variant="secondary">一次性支付</Badge>
+              <div className="flex items-center gap-2 text-sm">
+                <Check className="w-4 h-4 text-green-500" />
+                <span>无限次模拟考试</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Check className="w-4 h-4 text-green-500" />
+                <span>错题本功能</span>
+              </div>
             </div>
 
             {/* 支付按钮 */}
             <Button 
-              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600"
+              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-medium py-5 text-base"
               onClick={handlePay}
+              disabled={loading}
             >
-              <CreditCard className="w-4 h-4 mr-2" />
-              扫码支付 ¥{VIP_PRICE}
+              {loading ? (
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <CreditCard className="w-5 h-5 mr-2" />
+              )}
+              {loading ? '正在打开支付...' : `扫码支付 ¥${vipPrice}`}
             </Button>
 
-            {/* 手动输入凭证 */}
+            {/* 已有凭证 */}
             <Button 
               variant="link" 
-              className="w-full"
+              className="w-full text-gray-500"
               onClick={() => setStep('verify')}
             >
-              已有支付凭证？点击验证
+              已有支付凭证，去验证
             </Button>
           </div>
-        )}
+        ) : (
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>支付凭证码</Label>
+              <Input
+                value={paymentCode}
+                onChange={(e) => setPaymentCode(e.target.value.toUpperCase())}
+                placeholder="请输入凭证码"
+                className="text-center text-lg tracking-wider"
+                maxLength={12}
+              />
+              <p className="text-xs text-gray-400 text-center">支付成功后，输入收到的凭证码</p>
+            </div>
 
-        {/* 等待支付 */}
-        {step === 'paying' && (
-          <div className="space-y-4 py-4">
-            <div className="text-center">
-              <p className="text-lg font-medium mb-2">请扫码支付</p>
-              <p className="text-sm text-gray-500 mb-4">
-                支付成功后，请输入收到的 8 位凭证码
-              </p>
-              <Button onClick={() => setStep('verify')}>
-                我已支付，输入凭证码
+            {error && (
+              <div className="flex items-center justify-center gap-2 text-sm text-red-500">
+                <AlertCircle className="w-4 h-4" />
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => setStep('pay')}
+                disabled={verifying}
+              >
+                返回
+              </Button>
+              <Button 
+                className="flex-1 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600"
+                onClick={handleVerify}
+                disabled={verifying || !paymentCode}
+              >
+                {verifying && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                验证并开通
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* 验证凭证 */}
-        {step === 'verify' && (
-          <div className="space-y-4">
-            {success ? (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-8 h-8 text-green-500" />
-                </div>
-                <p className="text-lg font-medium text-green-600">VIP 开通成功！</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="payment-code">支付凭证码</Label>
-                  <Input
-                    id="payment-code"
-                    value={paymentCode}
-                    onChange={(e) => setPaymentCode(e.target.value.toUpperCase())}
-                    placeholder="请输入 8 位凭证码"
-                    maxLength={8}
-                    className="text-center text-lg tracking-widest"
-                  />
-                </div>
-
-                {error && (
-                  <div className="flex items-center gap-2 text-sm text-red-500">
-                    <AlertCircle className="w-4 h-4" />
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => setStep('select')}
-                  >
-                    返回
-                  </Button>
-                  <Button 
-                    className="flex-1"
-                    onClick={handleVerify}
-                    disabled={loading || paymentCode.length !== 8}
-                  >
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    验证并开通
-                  </Button>
-                </div>
-              </>
-            )}
           </div>
         )}
       </DialogContent>

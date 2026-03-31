@@ -25,8 +25,10 @@ import {
   Lightbulb,
   Trophy,
   Clock,
-  Play
+  Play,
+  Crown
 } from 'lucide-react';
+import PaymentModal from '@/components/PaymentModal';
 
 interface Question {
   id: number;
@@ -58,7 +60,17 @@ interface ExamHistory {
   finished_at: string;
 }
 
+interface QuotaInfo {
+  isLoggedIn: boolean;
+  canAnswer: boolean;
+  isVip: boolean;
+  reason: string;
+}
+
 export default function ExamPage() {
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showPayment, setShowPayment] = useState(false);
   const [examMode, setExamMode] = useState<'select' | 'exam' | 'result'>('select');
   const [subject, setSubject] = useState('');
   const [questionCount, setQuestionCount] = useState(30);
@@ -84,10 +96,29 @@ export default function ExamPage() {
   const currentQuestion = examSession?.questions[currentIndex];
   const progress = examSession ? ((currentIndex + 1) / examSession.total_questions) * 100 : 0;
 
+  // 检查权限
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/user/quota', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          setQuota(data.data);
+        }
+      } catch (error) {
+        console.error('获取权限失败:', error);
+      }
+      setCheckingAuth(false);
+    };
+    checkAuth();
+  }, []);
+
   // 获取考试历史
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    if (quota?.isVip) {
+      fetchHistory();
+    }
+  }, [quota?.isVip]);
 
   // 计时器
   useEffect(() => {
@@ -199,8 +230,8 @@ export default function ExamPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 选择考试页面
-  if (examMode === 'select') {
+  // 加载中
+  if (checkingAuth) {
     return (
       <div className="min-h-screen bg-gray-50">
         <header className="bg-white border-b">
@@ -211,6 +242,82 @@ export default function ExamPage() {
               </Button>
             </Link>
             <h1 className="text-xl font-bold">模拟考试</h1>
+          </div>
+        </header>
+        <main className="max-w-4xl mx-auto px-4 py-12 flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </main>
+      </div>
+    );
+  }
+
+  // 非VIP用户
+  if (!quota?.isVip && examMode === 'select') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <h1 className="text-xl font-bold">模拟考试</h1>
+            </div>
+          </div>
+        </header>
+        <main className="max-w-4xl mx-auto px-4 py-12">
+          <Card className="max-w-md mx-auto text-center">
+            <CardContent className="pt-8 pb-6">
+              <div className="w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Crown className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold mb-2">VIP 专属功能</h2>
+              <p className="text-gray-500 mb-6">
+                模拟考试功能仅限 VIP 会员使用<br/>
+                开通 VIP 即可无限次使用
+              </p>
+              <Button 
+                className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600"
+                onClick={() => setShowPayment(true)}
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                开通 VIP
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <PaymentModal 
+          open={showPayment} 
+          onOpenChange={setShowPayment}
+          onSuccess={() => {
+            window.location.reload();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // 选择考试页面
+  if (examMode === 'select') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <h1 className="text-xl font-bold">模拟考试</h1>
+            </div>
+            {quota?.isVip && (
+              <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white">
+                <Crown className="w-3 h-3 mr-1" /> VIP
+              </Badge>
+            )}
           </div>
         </header>
 

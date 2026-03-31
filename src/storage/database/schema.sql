@@ -118,3 +118,15 @@ CREATE INDEX IF NOT EXISTS user_sessions_user_id_idx ON user_sessions(user_id);
 
 -- 支付凭证索引
 CREATE INDEX IF NOT EXISTS used_payment_codes_code_idx ON used_payment_codes(code);
+
+-- ============ 禁用行级安全策略 (RLS) ============
+-- Supabase 默认启用 RLS，需要禁用才能正常使用
+
+ALTER TABLE questions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE used_payment_codes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE answer_records DISABLE ROW LEVEL SECURITY;
+ALTER TABLE wrong_questions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE exam_sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE exam_answers DISABLE ROW LEVEL SECURITY;
