@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 // 验证管理员权限
 async function checkAdmin(request: NextRequest): Promise<boolean> {
-  const adminToken = request.cookies.get('admin_token')?.value;
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-  return adminToken === adminPassword;
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('admin_token')?.value;
+    
+    if (!token) return false;
+    
+    // 验证 token 格式
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    return decoded.startsWith('admin:');
+  } catch {
+    return false;
+  }
 }
 
 // GET 获取系统配置

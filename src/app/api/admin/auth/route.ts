@@ -28,10 +28,13 @@ export async function POST(request: NextRequest) {
     if (password === ADMIN_PASSWORD) {
       const token = generateToken();
       const cookieStore = await cookies();
+      
+      // 设置 cookie，确保在跨站点场景也能工作
       cookieStore.set('admin_token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: true, // 必须为 true 才能使用 sameSite: 'none'
+        sameSite: 'none', // 允许跨站点发送 cookie
+        path: '/', // 确保 cookie 在所有路径下可用
         maxAge: 60 * 60 * 24 // 24 小时
       });
 
